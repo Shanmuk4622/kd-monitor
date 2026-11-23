@@ -11,11 +11,13 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
 from filelock import FileLock
 from kaggle_inputs import SOURCES, load_dataset, mount
+from kaggle_plan import worker_plan
 from kd_campaign import Driver, environment, erase_verified_copies, footprint_probe
 from kd_fit_io import Checkpoints, canonical, file_info, hash_object, json_read, json_write
 from kd_hub import Hub
@@ -42,7 +44,9 @@ def signature():
             HERE / "RUN_MATRIX_V2.csv",
         ]
     )
-    return hash_object({p.name: file_info(p)["sha256"] for p in files})
+    actual = hash_object({p.name: file_info(p)["sha256"] for p in files})
+    mapping = HERE / "CAMPAIGN_COMPATIBILITY.json"
+    return json_read(mapping).get(actual, actual) if mapping.exists() else actual
 
 
 class Publisher(Hub):
@@ -62,7 +66,7 @@ class Publisher(Hub):
         next_upload = time.monotonic() + 1800
         while not done.wait(60):
             print(f"[{time.strftime('%H:%M:%S', time.gmtime())} UTC] Current stage: {self.stage}", flush=True)
-            if time.monotonic() < next_upload:
+            if time.monotonic() < max(next_upload, self.last_write + 1800):
                 continue
             try:
                 self.write_commit(
@@ -285,7 +289,10 @@ def restore_gate(h, base, anchor):
         raise RuntimeError("Run notebook 01 first.")
     with tempfile.TemporaryDirectory(dir=base) as tmp:
         tmp = Path(tmp)
-        h.fetch(anchor, manifest, rev, tmp / "restored")
+        # Immutable, digest-checked anchor files can be reused on a same-disk restart.
+        cached = base / "recovery_anchors" / anchor / manifest["chain"]
+        h.fetch(anchor, manifest, rev, cached)
+        shutil.copytree(cached, tmp / "restored")
         child(tmp / "restored", DEV)
         child(tmp / "reference", DEV)
         check = verify_continuation(tmp / "reference", tmp / "restored", DEV)
@@ -309,34 +316,53 @@ def active_rows(group):
     raise ValueError("GROUP options: pilot, all, cifar100, cifar10, tiny_imagenet200")
 
 
-def worker_plan(rows, num_workers):
-    """Keep every shared bank and both consuming architectures on the same worker."""
-    if num_workers != 4:
-        raise ValueError("This campaign is pinned to four worker IDs.")
-    owners = {}
-    load = [0] * num_workers
-    teacher_owner = {"cifar100": 0, "cifar10": 1, "tiny_imagenet200": 2}
-    blocks = {}
-    for row in rows:
-        if row["role"] == "teacher" or row["arm"] == "hard_labels":
-            w = teacher_owner[row["dataset"]] if row["role"] == "teacher" else 3
-            owners[row["run_id"]] = w
-            load[w] += int(row["updates"])
-        else:
-            blocks.setdefault((row["dataset"], row["seed"]), []).append(row)
+def plan_session(h, rows, teachers, worker_id, source, models, limit):
+    if type(limit) is not int or limit < 0 or not isinstance(models, (list, tuple)):
+        raise ValueError("Use a nonnegative MAX_RUNS and a list of MODEL_FILTER names.")
+    if set(models) - {r["model"] for r in rows}:
+        raise ValueError("MODEL_FILTER contains a model outside this worker's assignments.")
+    revision = h.head()
+    ids = {r["run_id"] for r in rows} | {r["run_id"] for r in teachers.values()}
+    paths = [f"{h.namespace}/{name}/MANIFEST.json" for run in sorted(ids) for name in (run, run+"-review")]
+    present = set()
+    for start in range(0, len(paths), 50):
+        batch = paths[start:start+50]
+        present.update(item.path for item in h.call(lambda: h.api.get_paths_info(
+            h.repo, batch, repo_type="dataset", revision=revision)))
+    audited, resumed = set(), set()
+    for run in ids:
+        if f"{h.namespace}/{run}/MANIFEST.json" not in present:
+            continue
+        resumed.add(run)
+        if f"{h.namespace}/{run}-review/MANIFEST.json" not in present:
+            continue
+        fit = h.read(run+"/MANIFEST.json", revision)
+        review = h.read(run+"-review/MANIFEST.json", revision)
+        if not (fit["complete"] and review["complete"] and review["identity"] == hash_object(
+                {"fit": fit["identity"], "chain": fit["chain"], "review_source": source})):
+            raise RuntimeError("Inconsistent published audit for " + run)
+        audited.add(run)
+    mine = {r["run_id"] for r in rows}
+    h.audited_runs = frozenset(mine & audited)
+    h.resumable_runs = frozenset((resumed - audited) & mine)
+    pending = [r for r in rows if r["run_id"] not in audited and (not models or r["model"] in models)]
+    needed = {r["teacher_id"] for r in pending if r["teacher_id"]}
+    pending += [r for r in rows if r["run_id"] in needed - audited and r not in pending]
+    def priority(r):
+        dep = r["teacher_id"]
+        return (bool(dep and dep not in audited), r["role"] != "teacher",
+                r["run_id"] not in resumed, int(r["sequence"]))
+    pending.sort(key=priority)
+    selected = pending[:limit] if limit else pending
+    h.session_runs = tuple(r["run_id"] for r in selected)
+    print(f"Worker {worker_id}: {len(rows)} assigned, {len(h.audited_runs)} audited, "
+          f"{len(selected)} selected for this session.", flush=True)
+    for r in selected:
+        print(" ", r["run_id"], r["epochs"], "epochs", r["updates"], "updates", flush=True)
+    return selected, audited
 
-    def cost(block):
-        return sum(int(r["updates"]) for r in block)
 
-    for key in sorted(blocks, key=lambda k: (-cost(blocks[k]), k)):
-        w = min(range(num_workers), key=lambda i: (load[i], i))
-        for r in blocks[key]:
-            owners[r["run_id"]] = w
-        load[w] += cost(blocks[key])
-    return owners
-
-
-def train(h, base, out, paths, versions, group, num_workers, worker_id):
+def train(h, base, out, paths, versions, group, num_workers, worker_id, models=(), limit=0, hours=0):
     if group != "all" or type(worker_id) is not int or not 0 <= worker_id < num_workers:
         raise ValueError("Use GROUP='all' and a worker ID from 0 through 3.")
     full = active_rows("all")
@@ -345,18 +371,44 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
     teachers = {r["dataset"]: r for r in full if r["role"] == "teacher"}
     print(f"Worker {worker_id} owns {len(rows)} of {len(full)} fits.", flush=True)
     source = signature()
-    gate = restore_gate(h, base, "qualification-anchor-" + source[:16])
-    json_write(out / "cross_session_restore.json", gate)
-    receipt_dir = base / "session_receipts" / uuid.uuid4().hex
-    json_write(receipt_dir / "restore.json", gate)
-    publish_files(h, "restore-" + receipt_dir.name, receipt_dir, gate, ["restore.json"])
-    datasets = list(dict.fromkeys(r["dataset"] for r in rows))
-    for dataset in sorted(datasets, key=lambda ds: owners[teachers[ds]["run_id"]] != worker_id):
-        data, _, _, _ = load_input(dataset, paths, versions, base)
+    if not isinstance(hours, (float, int)) or not 0 <= hours <= 168:
+        raise ValueError("SESSION_HOURS must be between 0 and 168 (0 disables the time limit).")
+    deadline = time.monotonic() + hours * 3600 if hours else float("inf")
+    h.stage = "checking published audits"
+    rows, audited = plan_session(h, rows, teachers, worker_id, source, models, limit)
+    if not rows:
+        return "No pending fits match this session."
+    # Process ready datasets before batches that depend on another worker's teacher.
+    batches = {}
+    for r in rows:
+        dep = r["teacher_id"]
+        blocked = bool(dep and dep not in audited and owners[dep] != worker_id)
+        batches.setdefault((blocked, r["dataset"]), []).append(r)
+    order = sorted(batches, key=lambda item: item[0])
+    first_dataset = order[0][1]
+    h.stage = "checking recovery and preparing " + first_dataset
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending_input = pool.submit(load_input, first_dataset, paths, versions, base)
+        gate = restore_gate(h, base, "qualification-anchor-" + source[:16])
+        json_write(out / "cross_session_restore.json", gate)
+        h.write_commit({"sessions/"+h.owner+"/restore.json": canonical(gate)}, "verified recovery receipt")
+        first_input = pending_input.result()
+    del pending_input
+    for index, (blocked, dataset) in enumerate(order):
+        if time.monotonic() >= deadline:
+            h.session_paused = True
+            return "Session time budget reached."
+        h.stage = "preparing " + dataset
+        if index == 0:
+            data = first_input[0]
+            del first_input
+        else:
+            data = load_input(dataset, paths, versions, base)[0]
         identity = {"source": source, "input": data.identity, "environment": runtime_id()}
         check = fetch_json(h, "qualification-" + dataset, "qualification.json", base, hash_object(identity))
         if not check:
             raise RuntimeError("Missing matching qualification for " + dataset)
+        print("Verified preflight source, environment and input for", dataset, flush=True)
         d = Driver(
             base / dataset,
             h,
@@ -366,6 +418,7 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
             {"protocol_sha256": file_info(HERE / "KAGGLE_EXPERIMENT_PLAN.md")["sha256"]},
         )
         d.source = source
+        d.deadline = deadline
 
         def stop(*_):
             d.stopping = True
@@ -374,12 +427,13 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
         prev = {s: signal.signal(s, stop) for s in (signal.SIGTERM, signal.SIGINT)}
         try:
             teacher, tid = None, None
-            local_rows = [r for r in rows if r["dataset"] == dataset]
+            local_rows = batches[blocked, dataset]
             # The fourth worker can fit the independent hard-label controls immediately.
             if worker_id == 3:
                 local_rows.sort(key=lambda r: r["arm"] != "hard_labels")
             for r in local_rows:
                 h.stage = r["run_id"]
+                h.fit_started_at = time.time()
                 print(h.stage, flush=True)
                 arm = "teacher" if r["role"] == "teacher" else r["arm"]
                 cfg = dict(
@@ -399,7 +453,12 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
                         tr = teachers[dataset]
                         owner = owners[tr["run_id"]]
                         print(f"Awaiting verified {dataset} teacher from worker {owner}", flush=True)
+                        h.stage = f"waiting for {dataset} teacher (worker {owner})"
+                        wait_seconds = 30
                         while True:
+                            if time.monotonic() >= deadline:
+                                h.session_paused = True
+                                return "Session time budget reached while waiting for a teacher."
                             if d.stopping:
                                 raise KeyboardInterrupt
                             if getattr(h, "problem", None):
@@ -407,7 +466,8 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
                             completed, _ = h.selected(tr["run_id"] + "-review")
                             if completed and completed["complete"]:
                                 break
-                            time.sleep(30)
+                            time.sleep(min(wait_seconds, max(0, deadline-time.monotonic())))
+                            wait_seconds = min(300, wait_seconds*2)
                         # A completed, audited teacher has immutable selected weights.
                         # Read the endpoint directly; only the owner runs the teacher writer.
                         manifest, rev = h.selected(tr["run_id"])
@@ -437,6 +497,7 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
                                 torch.load(tmp / best, map_location="cpu", weights_only=True)
                             )
                             tid = manifest["files"][best]["sha256"]
+                        h.stage = r["run_id"]
                     bank = bs = manifest = None
                     if arm not in ("live_kd", "hard_labels"):
                         bank, bs, manifest = d.bank(cfg["seed"], arm, teacher, tid)
@@ -454,8 +515,14 @@ def train(h, base, out, paths, versions, group, num_workers, worker_id):
                     out / (dataset + "-latest.json"),
                     {"finished": r["run_id"], "revision": d.archives[r["run_id"]]["revision"]},
                 )
+                h.audited_runs = h.audited_runs | {r["run_id"]}
                 if d.stopping:
                     raise KeyboardInterrupt
+        except KeyboardInterrupt:
+            if time.monotonic() < deadline:
+                raise
+            h.session_paused = True
+            return "Session time budget reached at a checkpoint."
         finally:
             for s, handler in prev.items():
                 signal.signal(s, handler)

@@ -46,6 +46,8 @@ class Hub:
         self.owner = uuid.uuid4().hex
         self.lease_key = "OWNER.json"
         self.last_verified = {}
+        self._parent = None
+        self.last_write = 0.0
 
     def record(self, op, **fields):
         self.log.parent.mkdir(parents=True, exist_ok=True)
@@ -85,8 +87,12 @@ class Hub:
         from huggingface_hub import CommitOperationAdd
 
         for attempt in range(20):
-            head = self.head()
-            lease = self.read(self.lease_key, head) or {}
+            # An accepted parent fences every write. Refresh ownership on any conflict.
+            if self._parent and not claim:
+                head, lease = self._parent, {"owner": self.owner}
+            else:
+                head = self.head()
+                lease = self.read(self.lease_key, head) or {}
             other = lease.get("owner") not in (None, self.owner)
             if (claim and other and lease.get("expires", 0) > time.time()) or (
                 not claim and lease.get("owner") != self.owner
@@ -110,8 +116,11 @@ class Hub:
                     commit_message="KD view study " + label,
                 ).oid
                 self.record("commit", revision=rev, files=len(ops), label=label)
+                self._parent = None if release else rev
+                self.last_write = time.monotonic()
                 return rev
             except Exception as exc:
+                self._parent = None
                 code = getattr(getattr(exc, "response", None), "status_code", None)
                 if code in (409, 412) and attempt < 19:
                     time.sleep(random.SystemRandom().uniform(0.2, min(5, 0.5 + attempt)))
@@ -123,6 +132,8 @@ class Hub:
                     for n, v in changes.items()
                     if isinstance(v, bytes) and n.endswith(".json")
                 ):
+                    self._parent = None if release else current
+                    self.last_write = time.monotonic()
                     return current
                 wait = retry_delay(exc, attempt)
                 if wait is None or attempt >= 5:
@@ -144,7 +155,7 @@ class Hub:
         local = {**store.snapshot_files(), **(extras or {})}
         if not local:
             return None
-        old, _ = self.selected(unit)
+        old, revision = self.selected(unit)
         if old and old["identity"] != store.tag:
             raise RuntimeError("Remote scientific identity differs")
         entries = {}
@@ -153,16 +164,19 @@ class Hub:
             remote = (path.parent / (path.stem + "-" + info["sha256"][:24] + path.suffix)).as_posix()
             entries[name] = {**info, "object": unit + "/objects/" + remote}
         changed = [n for n, v in entries.items() if not old or old["files"].get(n) != v]
-        for start in range(0, len(changed), 48):
-            names = changed[start : start + 48]
+        if (not changed and old and old["files"] == entries
+                and old["chain"] == store.pointer["chain"] and old["complete"] == store.pointer["complete"]):
+            self.last_verified[unit] = revision
+            return revision
+        for start in range(0, len(changed), 128):
+            names = changed[start : start + 128]
             changes = {}
             for name in names:
                 source = store.path(name)
                 if file_info(source) != local[name]:
                     raise RuntimeError("File changed during snapshot: " + name)
                 changes[entries[name]["object"]] = str(source)
-            self.write_commit(changes, "stage evidence")
-        revision = self.head()
+            revision = self.write_commit(changes, "stage evidence")
         for start in range(0, len(changed), 48):
             names = changed[start : start + 48]
             paths = [self.namespace + "/" + entries[n]["object"] for n in names]
@@ -227,8 +241,8 @@ class Hub:
 
             self.call(transfer)
 
-    def reconcile(self, unit, store):
-        remote, rev = self.selected(unit)
+    def reconcile(self, unit, store, selected=None):
+        remote, rev = self.selected(unit) if selected is None else selected
         if not remote:
             return
         if remote["identity"] != store.tag:

@@ -167,7 +167,7 @@ class Driver:
                 self.hub.fetch(name, remote, rev, store.root, keep)
             print("Verified completed unit, skipping", name, rev, flush=True)
             return store, remote, rev
-        self.hub.reconcile(name, store)
+        self.hub.reconcile(name, store, selected=(remote, rev))
         live_files = sum(p.stat().st_size for p in store.root.rglob("*") if p.is_file())
         free = shutil.disk_usage(self.base).free
         working = Path("/kaggle/working")
@@ -216,6 +216,8 @@ class Driver:
 
         def hook(current, force):
             nonlocal window
+            if time.monotonic() >= getattr(self, "deadline", float("inf")):
+                self.stopping = True
             if force or self.stopping or time.monotonic() - last >= 1800:
                 if current.pointer["complete"] and window is not None:
                     window.finish()

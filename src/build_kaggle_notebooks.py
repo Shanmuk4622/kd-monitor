@@ -3,8 +3,10 @@
 import base64
 import hashlib
 import io
+import json
 import zipfile
 from pathlib import Path
+from textwrap import indent
 import nbformat as nb
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,8 +15,15 @@ OUT = ROOT / "notebooks"
 # Only this reviewed bundle may import the preceding release's CIFAR capacity probes.
 # A future runtime change falls back to qualifying the inputs itself.
 CIFAR_COMPATIBILITY = {
+    "67df1731479c785aa54c9535e210d644d1a6efe9df51eb455684e7418dbc4e2d":
+        "4f73c5a747c3ca210a388ed5375a3b96be176d0245d2539fe45357d957d9c7e9",
     "44b34996bf45cc167a213a61467b66d268a2c0062c61c259cd94f11fc573c2f9":
         "4f73c5a747c3ca210a388ed5375a3b96be176d0245d2539fe45357d957d9c7e9",
+}
+# Only this reviewed operational update can reuse the running campaign's receipts.
+# Other source edits produce a new scientific identity.
+CAMPAIGN_COMPATIBILITY = {
+    "f0e8cc9821d482e06bd93555ef3ba1a18770b8ce2fdd0b33f94d16ff9bc6f3a4": "5d9dcc3aed11cf9625ea8793bb2407e75cef1baab34dbebe028b37057bd0a226",
 }
 STAGES = [
     (
@@ -46,6 +55,7 @@ def main():
             ROOT / "src" / n
             for n in (
                 "kaggle_inputs.py",
+                "kaggle_plan.py",
                 "kaggle_run.py",
                 "kaggle_results.py",
                 "cache_preflight.py",
@@ -60,6 +70,8 @@ def main():
             info = zipfile.ZipInfo(p.name, (2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, p.read_text(encoding="utf-8").encode())
+        z.writestr(zipfile.ZipInfo("CAMPAIGN_COMPATIBILITY.json", (2026,1,1,0,0,0)),
+                   json.dumps(CAMPAIGN_COMPATIBILITY, sort_keys=True))
     body = buf.getvalue()
     digest = hashlib.sha256(body).hexdigest()
     encoded = base64.b64encode(body).decode()
@@ -92,6 +104,8 @@ packages = {"huggingface_hub":"huggingface_hub", "timm":"timm", "pynvml":"nvidia
 missing = [package for module,package in packages.items() if importlib.util.find_spec(module) is None]
 if missing:
     subprocess.check_call([sys.executable,"-m","pip","install","--disable-pip-version-check",*missing])"""
+    deps = "import sys\nif sys.version.split()[0] == '3.12.13':\n" + indent(deps, "    ")
+    launcher = (ROOT / "src" / "kaggle_worker_launcher.py").read_text(encoding="utf-8")
     jobs = [(1, STAGES[0], None), *((2, STAGES[1], w) for w in range(4)), (3, STAGES[2], None)]
     for i, (filename, title, call, desc), worker in jobs:
         if i == 1:
@@ -103,12 +117,13 @@ if missing:
             if worker:
                 filename += f"_Worker{worker}"
             title += f" · Worker {worker}"
-            config += f"\nWORKER_ID = {worker}\nMONITOR_ENABLED = True"
+            config += (f"\nWORKER_ID = {worker}\nMONITOR_ENABLED = True\n"
+                       "MAX_RUNS = 0  # 0 selects all pending assigned runs\n"
+                       "MODEL_FILTER = []  # e.g. ['resnet18']; includes required teachers owned here\n"
+                       "SESSION_HOURS = 0  # optional soft time limit from planning, in hours")
+            call = call[:-1] + ",models=MODEL_FILTER,limit=MAX_RUNS,hours=SESSION_HOURS)"
         resolve = input_resolver + '''
 
-from kaggle_inputs import SOURCES
-
-SOURCES["tiny_imagenet200"] = TINY_KAGGLE_SOURCE
 RESOLVED_PATHS = dict(INPUT_PATHS)
 RESOLVED_PATHS["tiny_imagenet200"] = tiny_input_path(TINY_KAGGLE_SOURCE, INPUT_PATHS.get("tiny_imagenet200"))
 print("Tiny ImageNet input:", RESOLVED_PATHS["tiny_imagenet200"])
@@ -123,18 +138,32 @@ with session(HF_REPO, SCRATCH, ROLE) as (hub, base, output):
             + """
 print(result)"""
         )
-        monitor_cells = []
+        program = """from kaggle_inputs import SOURCES
+from kaggle_run import runtime_id
+
+actual = runtime_id()
+differences = [f"{key}: expected {value}, found {actual.get(key)}"
+               for key, value in expected_software.items() if actual.get(key) != value]
+if differences:
+    raise RuntimeError("Software mismatch after launch: " + ", ".join(differences))
+SOURCES["tiny_imagenet200"] = TINY_KAGGLE_SOURCE
+"""
+        keys = ["HF_REPO", "SCRATCH", "TINY_KAGGLE_SOURCE", "RESOLVED_PATHS", "VERSIONS"]
         if worker is not None:
-            monitor_cells = [
-                nb.v4.new_markdown_cell("### Live worker dashboard\n\nSee monitoring/SETUP.md for Supabase and Kaggle secrets. Monitoring starts after the worker acquires its training lease."),
-                nb.v4.new_code_cell((ROOT / "monitoring" / "worker.py").read_text(encoding="utf-8")),
-            ]
+            keys.extend(["GROUP", "NUM_WORKERS", "WORKER_ID", "MONITOR_ENABLED",
+                         "MODEL_FILTER", "MAX_RUNS", "SESSION_HOURS"])
+            program += "\n" + (ROOT / "monitoring" / "worker.py").read_text(encoding="utf-8") + "\n"
             run = run.replace("    result = train(", "    with monitor_worker(WORKER_ID, base, hub, MONITOR_ENABLED):\n        result = train(")
         run = (
             run.replace("SCRATCH, ROLE", "SCRATCH, " + repr(role))
             if worker is None
             else run.replace("SCRATCH, ROLE", 'SCRATCH, f"worker-{WORKER_ID}"')
         )
+        program += "\n" + run
+        assert "'''" not in program
+        role_expr = repr(role) if worker is None else 'f"worker-{WORKER_ID}"'
+        launch = (launcher + "\nsettings = {" + ", ".join(f"{key!r}: {key}" for key in keys) + "}\n"
+                  + f"launch_stage(runtime, stage_program, settings, {role_expr})")
         doc = nb.v4.new_notebook(
             cells=[
                 nb.v4.new_markdown_cell(
@@ -146,7 +175,7 @@ print(result)"""
                 ),
                 nb.v4.new_code_cell(config),
                 nb.v4.new_markdown_cell(
-                    "### Runtime dependencies\n\nInstalls missing Python packages only. Image data are read exclusively from Kaggle mounts."
+                    "### Runtime dependencies\n\nThe final cell starts the stage in the qualified software environment. On a newer Kaggle image it installs that environment in scratch space."
                 ),
                 nb.v4.new_code_cell(deps),
                 nb.v4.new_markdown_cell(
@@ -155,9 +184,10 @@ print(result)"""
                 nb.v4.new_code_cell(loader),
                 nb.v4.new_markdown_cell("### Locate Tiny ImageNet\n\nSelect the dataset folder inside the Kaggle mount before qualification, training or scoring."),
                 nb.v4.new_code_cell(resolve),
-                *monitor_cells,
+                nb.v4.new_markdown_cell("### Stage code"),
+                nb.v4.new_code_cell("stage_program = r'''\n" + program + "\n'''"),
                 nb.v4.new_markdown_cell("### Execute this stage"),
-                nb.v4.new_code_cell(run),
+                nb.v4.new_code_cell(launch),
             ]
         )
         doc.metadata.kernelspec = dict(display_name="Python 3", language="python", name="python3")

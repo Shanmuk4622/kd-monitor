@@ -84,6 +84,16 @@ Start with one worker. Its received time should advance about twice per minute. 
 
 If the notebook reports HTTP 401 or 403, check the project URL, public key, matching worker token and its Kaggle access toggle. An HTTP 404 can indicate that the schema was installed in another project or the Data API is disabled. Network failures skip that sample; the next heartbeat retries with the latest state. A hard server stop can prevent the terminal event from being delivered. A previously running worker shows **stale** after 90 seconds without a new receipt. This means the dashboard lost contact; Kaggle logs can distinguish a network interruption from a stopped job.
 
+## Run inventory and performance history
+
+Run the current `monitoring/schema.sql` once in the project SQL Editor. It preserves existing tokens and accepts heartbeats from older notebooks. Each worker still sends one RPC about every 30 seconds. During rollout, updated workers fall back to the original payload if the old schema rejects the additional fields.
+
+Select a notebook in **Worker detail** to see its model, dataset, method, seed, planned epochs, observed run time and status. New workers send the audited, resumable and selected run IDs. A completed session can have other pending campaign fits. Legacy workers show unconfirmed completion until the next inventory arrives. The four charts show sampled batch loss, batch accuracy, CPU use and first-GPU use. Session elapsed covers the reporting session; current run elapsed includes setup and verification for that run. Observed time sums continuous heartbeat intervals of up to 90 seconds across sessions.
+
+`kd_workers` stores one latest sample per worker. `kd_events` keeps 40 events per worker. `kd_trends` keeps at most one point per worker per five-minute interval and prunes older points on writes after 12 hours. `kd_run_activity` stores one observed-time summary per worker and run. Older sessions start contributing history on their next heartbeat after migration. Without stored history, the page graphs samples observed while the tab is open. Detailed unaggregated research evidence stays on HF.
+
+Build the Pages entry point with `python src/build_monitor_site.py`. It uses the same allocation function and run matrix as the notebooks to generate the inventory and bundles the site into `docs/index.html`.
+
 ## Payload and metric definitions
 
 [examples.json](examples.json) contains two complete example request bodies for `POST /rest/v1/rpc/kd_report`. They illustrate a training checkpoint and a worker starting up. The actual sender inserts a current timestamp and its Kaggle token, and supplies the public API key in the `apikey` header. Sample timestamps in the examples are illustrative; the server checks freshness.

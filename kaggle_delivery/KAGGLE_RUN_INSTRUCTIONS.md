@@ -33,6 +33,36 @@ NB01 prints the directory it is listing, the number of images decoded and hashed
 
 Start each worker in a separate Kaggle session. Four simultaneous sessions require eight T4s across your available quota. If capacity is limited, prioritize publishing all three teachers. A worker waiting for a teacher can be interrupted normally and resumed with the same ID after the owner finishes its teacher. No worker depends on another worker's student fits. The 78 planned fits consist of three teachers and 75 students. Paired students reuse 38 unique teacher prediction banks across the campaign.
 
+### Running on a newer Kaggle image
+
+All six Kaggle notebooks use the software recorded by the completed preflight, including Python 3.12.13 and PyTorch 2.10.0+cu128. Select **GPU T4 x2**, enable Internet and choose **Run All**. If the current kernel matches, the stage runs directly. Otherwise the notebook installs the required Python and GPU packages under `/kaggle/temp`. Allow several GB of download and disk space on the first run in each fresh session.
+
+For this campaign, NB01 has already completed. Leave active workers running. Import the updated notebook for each worker when starting or resuming its session. Each training notebook uses its own worker ID and monitoring secret and prints `Verified preflight source, environment and input for` after checking each dataset receipt. Use NB03 after all student fits and audits finish.
+
+If the environment check passes and a dataset identity check fails, verify the attached dataset edition and mount against NB01.
+
+## Choosing work for a Kaggle session
+
+Leave an active notebook running. At its next restart import the refreshed file with the same worker ID. All 78 assignments and the original preflight identity are preserved. NB01 is already complete for this campaign.
+
+| First-cell setting | Example | Effect |
+| --- | --- | --- |
+| `MAX_RUNS` | `2` | Select up to two unfinished fits assigned to this worker, including required owned teachers. Zero selects all. |
+| `MODEL_FILTER` | `["resnet18"]` | Select assigned fits of these architectures. An empty list allows all models. |
+| `SESSION_HOURS` | `8.5` | Use a soft wall-clock budget from the start of planning. Setup before planning and the final upload are additional. Zero disables the limit. |
+
+Startup checks the published fit and audit manifests, skips verified completions, and prints the selected run IDs, epochs and update counts. The planner prioritizes ready jobs and resumable work while maintaining teacher and prediction-bank ownership. The first dataset loads while the independent GPU recovery check runs. On a clean Kaggle image, package installation and verifying the dataset still take time. A time budget stops training at a checkpoint; give the final upload time to finish before closing Kaggle.
+
+## Evidence in Hugging Face
+
+| Granularity | Files and measurements |
+| --- | --- |
+| Every epoch | `epochs/NNN/metrics.csv` stores fit count, cross-entropy sum, distillation KL sum where applicable, objective sum, training correct count, validation size, validation correct count, and mean validation NLL. Compute training or validation accuracy as correct divided by count. Epochs also retain weights, validation logits and per-image labels and predictions. |
+| Every optimizer update | `updates/NNNNNNNN/updates.csv` includes batch and epoch, sample count, CE/KL/objective sums, correct count, learning rate, gradient L2 norm, seconds and peak allocated GPU bytes. Each file holds the updates since the previous local checkpoint. Exposure rows and logits link predictions to specific input views. |
+| Per model and run | Configuration, optimizer and RNG recovery state, best/final weight references, audit, timing windows, and board energy when available. Final held-out evaluation is performed by NB03. |
+
+Local evidence is checkpointed during training. HF publication uses grouped commits around the 30-minute window and at boundaries. Up to 128 changed evidence files share a staging commit; a verified manifest selects the checkpoint. An abrupt disconnect can lose local updates since the last selected HF commit. Supabase heartbeats do not publish training evidence to HF.
+
 ## Live worker monitoring
 
 Follow the [Supabase setup guide](../monitoring/SETUP.md) to connect the four training notebooks to the live dashboard. It lists the SQL queries, Kaggle secrets and website configuration.

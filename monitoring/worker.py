@@ -36,7 +36,7 @@ class FitProgress:
             if key != self.last_key:
                 p = json.loads(pointer.read_text())
                 step = p["update"]
-                metrics = dict(comment="Fit initialized")
+                metrics = dict(comment="Fit initialized", update=step)
                 name = f"updates/{step:08d}/updates.csv"
                 if step and name in p["files"]:
                     with (unit / name).open(newline="") as f:
@@ -44,7 +44,16 @@ class FitProgress:
                     n = int(batch["n"])
                     metrics.update(epoch=int(batch["epoch"]), loss=float(batch["objective_sum"]) / n,
                                    accuracy=100 * int(batch["correct"]) / n,
+                                   learning_rate=float(batch["learning_rate"]),
                                    comment=f"Local checkpoint at update {step}")
+                    for epoch in (int(batch["epoch"]), int(batch["epoch"]) - 1):
+                        filename = f"epochs/{epoch:03d}/metrics.csv"
+                        if filename in p["files"]:
+                            with (unit / filename).open(newline="") as f:
+                                measured = next(csv.DictReader(f))
+                            metrics["validation_epoch"] = epoch
+                            metrics["validation_accuracy"] = 100 * int(measured["validation_correct"]) / int(measured["validation_n"])
+                            break
                 if p["complete"]:
                     metrics["comment"] = "Fit complete; verifying or publishing evidence"
                 self.last_key, self.metrics = key, metrics
@@ -100,6 +109,7 @@ def monitor_worker(worker, base, hub, enabled=True):
         session = requests.Session()
         seq = 0
         failures = 0
+        legacy_until = 0
         psutil.cpu_percent()
         try:
             while True:
@@ -107,6 +117,12 @@ def monitor_worker(worker, base, hub, enabled=True):
                 final = stop.is_set()
                 try:
                     sample = progress.sample()
+                    details = {k: sample.pop(k) for k in ("update","learning_rate","validation_epoch","validation_accuracy") if k in sample}
+                    if hasattr(hub, "session_runs"):
+                        details.update(audited=sorted(hub.audited_runs), resumable=sorted(hub.resumable_runs),
+                                       selected=list(hub.session_runs))
+                    if sample["model"] and hasattr(hub, "fit_started_at"):
+                        details["fit_started_at"] = hub.fit_started_at
                     cpu = psutil.cpu_percent()
                     status = terminal[0] if final else "running"
                     if final:
@@ -114,9 +130,14 @@ def monitor_worker(worker, base, hub, enabled=True):
                     sample.update(worker_id=worker, started_at=started, seq=seq, status=status,
                                   cpu=cpu if seq else None, gpus=gpu_metrics(), sampled_at=utc_now())
                     seq += 1
-                    response = session.post(url + "/rest/v1/rpc/kd_report",
-                                            headers={"apikey": key}, json={"p_token": token, "p": sample},
-                                            timeout=(3, 5))
+                    def report(data):
+                        return session.post(url + "/rest/v1/rpc/kd_report", headers={"apikey": key},
+                                            json={"p_token": token, "p": data}, timeout=(3, 5))
+                    extended = tick >= legacy_until
+                    response = report({**sample, "details": details} if extended else sample)
+                    if extended and response.status_code == 400 and "Invalid worker sample" in response.text:
+                        legacy_until = tick + 600
+                        response = report(sample)
                     response.raise_for_status()
                     if failures or seq == 1:
                         print(f"Supabase monitor connected for worker {worker}.", flush=True)
@@ -136,6 +157,10 @@ def monitor_worker(worker, base, hub, enabled=True):
     thread.start()
     try:
         yield
+        if getattr(hub, "session_paused", False):
+            terminal[:] = ["stopped", "Session budget reached"]
+        elif hasattr(hub, "session_runs"):
+            terminal[1] = "Selected session work finished"
     except KeyboardInterrupt:
         terminal[:] = ["stopped", "Worker interrupted"]
         raise

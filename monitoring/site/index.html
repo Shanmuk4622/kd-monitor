@@ -5,7 +5,7 @@
   <title>KD · Worker monitor</title>
   <link rel="stylesheet" href="style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
-  <script defer src="config.js"></script><script defer src="app.js"></script>
+  <script defer src="config.js"></script><script defer src="plan.js"></script><script defer src="app.js"></script>
 </head>
 <body>
   <header><strong>KD / Research</strong><span id="connection" role="status">Connecting…</span></header>
@@ -19,7 +19,18 @@
       <button>Sign in</button>
     </form>
     <section id="dashboard" hidden>
+      <p id="summary"></p>
       <div id="workers"></div>
+      <section class="panel">
+        <div class="panel-head"><h2>Worker detail</h2><label>Notebook
+          <select id="focus"><option value="0">Worker 0</option><option value="1">Worker 1</option><option value="2">Worker 2</option><option value="3">Worker 3</option></select></label></div>
+        <h3>Performance history</h3>
+        <p id="history-note"></p><div id="charts"></div>
+        <div class="panel-head"><h3>Run inventory</h3><label>Show
+          <select id="filter"><option value="">All runs</option><option>Audited</option><option>Active</option><option>Pending</option><option>Resumable</option><option>Unconfirmed</option></select></label></div>
+        <p id="plan-note"></p>
+        <div class="events"><table><thead><tr><th>Dataset</th><th>Model</th><th>Method</th><th>Seed</th><th>Epochs</th><th>Status</th><th>Observed time</th></tr></thead><tbody id="inventory"></tbody></table></div>
+      </section>
       <h2>Recent events</h2>
       <div class="events"><table><thead><tr><th>Time</th><th>Worker</th><th>Run</th><th>Event</th></tr></thead><tbody id="events"></tbody></table></div>
     </section>
