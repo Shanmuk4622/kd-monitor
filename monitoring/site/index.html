@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>KD · Worker monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
+  <script defer src="config.js"></script><script defer src="app.js"></script>
+</head>
+<body>
+  <header><strong>KD / Research</strong><span id="connection" role="status">Connecting…</span></header>
+  <main>
+    <div class="title"><h1>Worker monitor</h1><button hidden id="logout">Sign out</button></div>
+    <p id="notice" role="status"></p>
+    <form id="login" hidden>
+      <h2>Viewer sign-in</h2>
+      <label>Email<input id="email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="password" type="password" autocomplete="current-password" required></label>
+      <button>Sign in</button>
+    </form>
+    <section id="dashboard" hidden>
+      <div id="workers"></div>
+      <h2>Recent events</h2>
+      <div class="events"><table><thead><tr><th>Time</th><th>Worker</th><th>Run</th><th>Event</th></tr></thead><tbody id="events"></tbody></table></div>
+    </section>
+  </main>
+</body></html>

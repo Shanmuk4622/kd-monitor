@@ -1,0 +1,13 @@
+:root{font-family:"Inter",system-ui,sans-serif;color:#182f32;background:#f3f5f0;font-variant-numeric:tabular-nums}
+*{box-sizing:border-box}body{margin:0}header{background:#153e3c;color:#f0f6ef;display:flex;justify-content:space-between;padding:18px max(5vw,20px);align-items:center}
+header span{font:13px ui-monospace,monospace}main{max-width:1280px;margin:auto;padding:28px clamp(16px,4vw,48px) 60px}
+.title,.card-top{display:flex;justify-content:space-between;align-items:center;gap:10px}h1{font-size:clamp(32px,5vw,56px);letter-spacing:-.055em;margin:12px 0 22px}h2{font-size:24px;letter-spacing:-.035em;margin:32px 0 12px}
+#workers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card,form,.events{border:1px solid #c9d4cd;background:#fff;border-radius:10px}
+.card{padding:20px;min-width:0}.card h3{margin:0;font-size:20px}.state{font:12px ui-monospace,monospace;border-radius:20px;padding:4px 10px;background:#e8eeea}
+.running{background:#dcf4dd;color:#215b31}.stale,.stopped{background:#ffebc4;color:#744b08}.failed{background:#ffe2e2;color:#922}.completed{background:#dceef9;color:#185370}
+dl{display:grid;grid-template-columns:repeat(3,1fr);gap:13px 9px}dt,small{font-size:12px;color:#4a605c}dd{margin:4px 0;font-weight:600;overflow-wrap:anywhere}
+.gpu,.run{font:13px ui-monospace,monospace;overflow-wrap:anywhere}.run{color:#41615b}.events{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;font-size:14px}
+th,td{padding:12px;border-bottom:1px solid #e0e6df}th{font-size:12px;color:#47605d}td:nth-child(3){overflow-wrap:anywhere}form{max-width:390px;padding:24px}
+form h2{margin-top:0}label,input{display:block;width:100%;margin:8px 0}input{padding:10px;border:1px solid #97aaa2;border-radius:4px}
+button{background:#1c5950;color:white;border:0;padding:10px 15px;border-radius:5px;cursor:pointer}button[hidden],[hidden]{display:none!important}
+#notice:not(:empty){background:#fff4d7;padding:12px;border-radius:6px}@media(max-width:680px){#workers{grid-template-columns:1fr}th,td{padding:8px}}

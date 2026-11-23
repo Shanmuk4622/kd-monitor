@@ -1,0 +1,24 @@
+[
+  {
+    "p_token": "<worker 0 secret, supplied by Kaggle>",
+    "p": {
+      "worker_id": 0, "started_at": "2026-11-23T08:00:00Z", "seq": 12,
+      "sampled_at": "2026-11-23T08:06:00Z", "status": "running",
+      "run_id": "kaggle-v2.cifar100.resnet34.teacher.907", "model": "resnet34",
+      "epoch": 2, "loss": 3.1784, "accuracy": 24.21875, "cpu": 31.2,
+      "gpus": [{"index":0,"utilization":94,"used_mib":5462,"total_mib":15360},
+               {"index":1,"utilization":0,"used_mib":2,"total_mib":15360}],
+      "comment": "Local checkpoint at update 384"
+    }
+  },
+  {
+    "p_token": "<worker 3 secret, supplied by Kaggle>",
+    "p": {
+      "worker_id": 3, "started_at": "2026-11-23T08:10:00Z", "seq": 0,
+      "sampled_at": "2026-11-23T08:10:01Z", "status": "running",
+      "run_id": "opening", "model": null, "epoch": null, "loss": null,
+      "accuracy": null, "cpu": null, "gpus": [],
+      "comment": "Preparing inputs or checking recovery"
+    }
+  }
+]
