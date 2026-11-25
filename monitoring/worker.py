@@ -134,13 +134,6 @@ def monitor_worker(worker, base, hub, enabled=True):
                         return session.post(url + "/rest/v1/rpc/kd_report", headers={"apikey": key},
                                             json={"p_token": token, "p": data}, timeout=(3, 5))
                     extended = tick >= legacy_until
-<<<<<<< HEAD
-                    response = report({**sample, "details": details} if extended else sample)
-                    if extended and response.status_code == 400 and "Invalid worker sample" in response.text:
-                        legacy_until = tick + 600
-                        response = report(sample)
-                    response.raise_for_status()
-=======
                     queue = getattr(hub, "queue", None)
                     if not (queue and queue.renew({**sample, "details": details})):
                         response = report({**sample, "details": details} if extended else sample)
@@ -148,7 +141,6 @@ def monitor_worker(worker, base, hub, enabled=True):
                             legacy_until = tick + 600
                             response = report(sample)
                         response.raise_for_status()
->>>>>>> 7c4a96c (updated again)
                     if failures or seq == 1:
                         print(f"Supabase monitor connected for worker {worker}.", flush=True)
                     failures = 0

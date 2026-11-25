@@ -100,12 +100,9 @@ class Hub:
             else:
                 head = self.head()
                 lease = self.read(self.lease_key, head) or {}
-<<<<<<< HEAD
-=======
                 if getattr(self, "queue_capable", False) and "queue_owner" in lease:
                     self.queue_role = True
                     lease = {"owner": lease["queue_owner"], "expires": lease["queue_expires"]}
->>>>>>> 7c4a96c (updated again)
             other = lease.get("owner") not in (None, self.owner)
             if claim and other and lease.get("expires", 0) > time.time():
                 raise WriterLeaseBusy(self.lease_key, lease["expires"])

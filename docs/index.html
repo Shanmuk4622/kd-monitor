@@ -51,15 +51,9 @@ figure svg{width:100%;height:78px}figure small{display:block}#plan-note,#history
         <h3>Performance history</h3>
         <p id="history-note"></p><div id="charts"></div>
         <div class="panel-head"><h3>Run inventory</h3><label>Show
-<<<<<<< HEAD
-          <select id="filter"><option value="">All runs</option><option>Audited</option><option>Active</option><option>Pending</option><option>Resumable</option><option>Unconfirmed</option></select></label></div>
-        <p id="plan-note"></p>
-        <div class="events"><table><thead><tr><th>Dataset</th><th>Model</th><th>Method</th><th>Seed</th><th>Epochs</th><th>Status</th><th>Observed time</th></tr></thead><tbody id="inventory"></tbody></table></div>
-=======
           <select id="filter"><option value="">All runs</option><option>Audited</option><option>Active</option><option>Pending</option><option>Resumable</option><option>Unconfirmed</option><option>Ready</option><option>Ready to resume</option><option>Waiting for teacher</option><option>Waiting for bank</option><option>Claimed</option><option>Original notebook</option></select></label></div>
         <p id="plan-note"></p>
         <div class="events"><table><thead><tr><th>Dataset</th><th>Model</th><th>Method</th><th>Seed</th><th>Epochs</th><th>Status</th><th>Worker or dependency</th><th>Observed time</th></tr></thead><tbody id="inventory"></tbody></table></div>
->>>>>>> 7c4a96c (updated again)
       </section>
       <h2>Recent events</h2>
       <div class="events"><table><thead><tr><th>Time</th><th>Worker</th><th>Run</th><th>Event</th></tr></thead><tbody id="events"></tbody></table></div>
@@ -168,11 +162,7 @@ function node(tag, value, cls) {
 }
 const fmt = (v, digits = 0, unit = "") => Number.isFinite(v) ? v.toFixed(digits) + unit : "—";
 const localTime = t => new Date(t).toLocaleString();
-<<<<<<< HEAD
-let workers = [], events = [];
-=======
 let workers = [], events = [], jobs = [];
->>>>>>> 7c4a96c (updated again)
 let trends = [], activity = [], memory = [], historyReady = false, nextHistory = 0;
 const plans = window.KD_PLAN || [];
 function duration(seconds) {
@@ -188,8 +178,6 @@ function runState(plan, w) {
   if (d?.resumable?.includes(plan.id)) return "Resumable";
   return Array.isArray(d?.audited) ? "Pending" : "Unconfirmed";
 }
-<<<<<<< HEAD
-=======
 function queueState(j) {
   if (j.state === "audited") return "Audited";
   if (j.state === "legacy") return "Original notebook";
@@ -207,7 +195,6 @@ function queueOwner(j) {
   if (state==="Waiting for bank") return j.bank;
   return "Next free worker";
 }
->>>>>>> 7c4a96c (updated again)
 function chart(title, key, points, percent) {
   const figure=node("figure");
   figure.append(node("figcaption",title));
@@ -241,26 +228,13 @@ function chart(title, key, points, percent) {
 }
 function renderDetail() {
   const id=Number(el("focus").value), w=workers.find(x=>x.worker_id===id);
-<<<<<<< HEAD
-  const items=plans.filter(p=>p.worker===id), filter=el("filter").value;
-  const details=w?.sample?.details;
-  el("plan-note").textContent=Array.isArray(details?.selected)
-=======
   const items=jobs.length ? plans : plans.filter(p=>p.worker===id), filter=el("filter").value;
   const details=w?.sample?.details;
   el("plan-note").textContent=jobs.length ? "Shared inventory for all four workers. Original notebook means its runs are awaiting migration." : Array.isArray(details?.selected)
->>>>>>> 7c4a96c (updated again)
     ? details.selected.length+" selected this session. Audited fits have passed the Hugging Face evidence check."
     : "Assignment is known. Completion is unconfirmed until this worker sends an audit inventory.";
   const rows=[];
   for (const p of items) {
-<<<<<<< HEAD
-    const state=runState(p,w);
-    if (filter && state!==filter) continue;
-    const a=activity.find(x=>x.worker_id===id && x.run_id===p.id);
-    const tr=node("tr");
-    for (const value of [p.dataset,p.model,p.arm,p.seed,p.epochs,state,duration(a?.observed_seconds)])
-=======
     const job=jobs.find(j=>j.run_id===p.id);
     const state=job ? queueState(job) : runState(p,w);
     if (filter && state!==filter) continue;
@@ -268,16 +242,11 @@ function renderDetail() {
     const seconds=observations.length ? observations.reduce((v,x)=>v+x.observed_seconds,0) : null;
     const tr=node("tr");
     for (const value of [p.dataset,p.model,p.arm,p.seed,p.epochs,state,job ? queueOwner(job) : "Worker "+p.worker,duration(seconds)])
->>>>>>> 7c4a96c (updated again)
       tr.append(node("td",value));
     rows.push(tr);
   }
   if (!rows.length) {
-<<<<<<< HEAD
-    const tr=node("tr"),td=node("td","No matching runs.");td.colSpan=7;tr.append(td);rows.push(tr);
-=======
     const tr=node("tr"),td=node("td","No matching runs.");td.colSpan=8;tr.append(td);rows.push(tr);
->>>>>>> 7c4a96c (updated again)
   }
   el("inventory").replaceChildren(...rows);
   const points=(historyReady?trends:memory).filter(p=>p.worker_id===id);
@@ -299,25 +268,17 @@ function render() {
     head.append(node("h3", "Worker " + id), node("span", label, "state " + state));
     box.append(head, node("p", s.run_id || "Awaiting worker", "run"));
     const owned=plans.filter(p=>p.worker===id), d=s.details || {};
-<<<<<<< HEAD
-    const plan=owned.find(p=>p.id===s.run_id);
-=======
     const plan=plans.find(p=>p.id===s.run_id);
->>>>>>> 7c4a96c (updated again)
     const progress=Number.isFinite(d.update) ? d.update : Number(/Local checkpoint at update (\d+)/.exec(s.comment||"")?.[1]);
     const activeEnd=state==="running" ? Date.now() : Date.parse(s.sampled_at);
     const elapsed=(activeEnd-Date.parse(s.started_at))/1000;
     const observed=activity.find(a=>a.worker_id===id && a.run_id===s.run_id);
     const done=owned.filter(p=>runState(p,w)==="Audited").length;
-<<<<<<< HEAD
-    box.append(node("p",owned.length+" assigned · "+(Array.isArray(d.audited)
-=======
     if (jobs.length) {
       const current=jobs.find(j=>j.worker===id && queueState(j)==="Claimed");
       const audited=jobs.filter(j=>j.worker===id && j.state==="audited").length;
       box.append(node("p",audited+" audited"+(current ? " · Claimed "+current.run_id : "")));
     } else box.append(node("p",owned.length+" assigned · "+(Array.isArray(d.audited)
->>>>>>> 7c4a96c (updated again)
       ? done+" audited · "+(owned.length-done)+" unfinished" : "awaiting audit inventory")));
     if (plan && Number.isFinite(progress)) {
       const bar=node("progress");bar.max=plan.updates;bar.value=progress;bar.setAttribute("aria-label","Fit updates");
@@ -343,14 +304,11 @@ function render() {
   }
   el("workers").replaceChildren(...cards);
   el("summary").textContent=plans.length+" scheduled fits across four notebooks";
-<<<<<<< HEAD
-=======
   if (jobs.length) {
     const counts=new Map();
     for (const j of jobs) {const k=queueState(j);counts.set(k,(counts.get(k)||0)+1);}
     el("summary").textContent=jobs.length+" fits · "+Array.from(counts,([k,n])=>n+" "+k.toLowerCase()).join(" · ");
   }
->>>>>>> 7c4a96c (updated again)
   renderDetail();
   const rows = events.map(e => {
     const tr = node("tr");
@@ -372,11 +330,7 @@ async function refresh() {
       client.from("kd_jobs").select("run_id,original_worker,teacher,bank,state,resumable,bank_ready,worker,expires")]);
     if (v!==version || ticket!==request) return;
     if (w.error || e.error) throw w.error || e.error;
-<<<<<<< HEAD
-    workers=w.data; events=e.data;
-=======
     workers=w.data; events=e.data; if (!q.error) jobs=q.data;
->>>>>>> 7c4a96c (updated again)
     for (const row of workers) {
       const s=row.sample;
       if (!memory.some(p=>p.worker_id===row.worker_id && p.sampled_at===s.sampled_at))
@@ -412,11 +366,7 @@ function showSession(session) {
   if (viewer===id) return;
   version++; viewer=id; clearTimeout(timer); clearInterval(fallback);
   if (channel) {client.removeChannel(channel); channel=null;}
-<<<<<<< HEAD
-  workers=[]; events=[]; trends=[]; activity=[]; memory=[]; historyReady=false;nextHistory=0;render();
-=======
   workers=[]; events=[]; jobs=[]; trends=[]; activity=[]; memory=[]; historyReady=false;nextHistory=0;render();
->>>>>>> 7c4a96c (updated again)
   if (!id) return;
   const v=version;
   el("connection").textContent="Connecting"; refresh();
