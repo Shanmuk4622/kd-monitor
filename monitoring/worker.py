@@ -23,12 +23,12 @@ class FitProgress:
         run = self.hub.stage
         parts = run.split(".")
         row = dict(run_id=run, model=None, epoch=None, loss=None, accuracy=None,
-                   comment="Preparing inputs or checking recovery")
+                   comment=run[:200])
         if len(parts) != 5 or parts[0] != "kaggle-v2":
             return row
         _, dataset, model, arm, seed = parts
-        row.update(model=model, comment="Preparing fit or waiting for its dependencies")
-        unit = self.base / dataset / "units" / run
+        row.update(model=model, comment="Restoring fit or preparing its first batch")
+        unit = getattr(self.hub, "fit_root", self.base / dataset) / "units" / run
         pointer = unit / "POINTER.json"
         try:
             st = pointer.stat()
@@ -134,11 +134,21 @@ def monitor_worker(worker, base, hub, enabled=True):
                         return session.post(url + "/rest/v1/rpc/kd_report", headers={"apikey": key},
                                             json={"p_token": token, "p": data}, timeout=(3, 5))
                     extended = tick >= legacy_until
+<<<<<<< HEAD
                     response = report({**sample, "details": details} if extended else sample)
                     if extended and response.status_code == 400 and "Invalid worker sample" in response.text:
                         legacy_until = tick + 600
                         response = report(sample)
                     response.raise_for_status()
+=======
+                    queue = getattr(hub, "queue", None)
+                    if not (queue and queue.renew({**sample, "details": details})):
+                        response = report({**sample, "details": details} if extended else sample)
+                        if extended and response.status_code == 400 and "Invalid worker sample" in response.text:
+                            legacy_until = tick + 600
+                            response = report(sample)
+                        response.raise_for_status()
+>>>>>>> 7c4a96c (updated again)
                     if failures or seq == 1:
                         print(f"Supabase monitor connected for worker {worker}.", flush=True)
                     failures = 0

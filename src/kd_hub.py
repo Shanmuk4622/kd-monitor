@@ -32,6 +32,13 @@ def retry_delay(exc, attempt):
     )
 
 
+class WriterLeaseBusy(RuntimeError):
+    def __init__(self, key, expires):
+        self.expires = expires
+        deadline = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(expires))
+        super().__init__(f"{key} has an active writer lease until {deadline}")
+
+
 class Hub:
     def __init__(self, repo, token, log, namespace="kd-view-budget/v1"):
         from huggingface_hub import HfApi
@@ -93,20 +100,34 @@ class Hub:
             else:
                 head = self.head()
                 lease = self.read(self.lease_key, head) or {}
+<<<<<<< HEAD
+=======
+                if getattr(self, "queue_capable", False) and "queue_owner" in lease:
+                    self.queue_role = True
+                    lease = {"owner": lease["queue_owner"], "expires": lease["queue_expires"]}
+>>>>>>> 7c4a96c (updated again)
             other = lease.get("owner") not in (None, self.owner)
-            if (claim and other and lease.get("expires", 0) > time.time()) or (
-                not claim and lease.get("owner") != self.owner
-            ):
-                raise RuntimeError("Another publisher owns the KD namespace")
+            if claim and other and lease.get("expires", 0) > time.time():
+                raise WriterLeaseBusy(self.lease_key, lease["expires"])
+            if not claim and lease.get("owner") != self.owner:
+                raise RuntimeError(f"Writer ownership changed at {self.lease_key}. Stopping publication.")
             lease = {
                 "owner": None if release else self.owner,
                 "expires": 0 if release else time.time() + 2700,
             }
+            if getattr(self, "queue_role", False):
+                # Old notebooks read only owner/expires and must never reopen migrated fits.
+                lease = {"owner": "shared-queue-v1", "expires": 4102444800,
+                         "queue_owner": lease["owner"], "queue_expires": lease["expires"]}
             values = {**changes, self.lease_key: canonical(lease)}
             ops = [
                 CommitOperationAdd(path_in_repo=self.namespace + "/" + n, path_or_fileobj=v)
                 for n, v in values.items()
             ]
+            # Check the job claim after choosing this specific CAS parent, including on retries.
+            before_commit = getattr(self, "before_commit", None)
+            if before_commit:
+                before_commit()
             try:
                 rev = self.api.create_commit(
                     self.repo,

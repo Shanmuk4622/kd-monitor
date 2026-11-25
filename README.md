@@ -2,7 +2,7 @@
 
 ## Current Kaggle release
 
-Start with [KAGGLE_RUN_INSTRUCTIONS.md](notebooks/KAGGLE_RUN_INSTRUCTIONS.md). Run preflight once, the four preassigned workers in separate sessions, then results once. The revised matrix contains 78 fits.
+Start with [KAGGLE_RUN_INSTRUCTIONS.md](notebooks/KAGGLE_RUN_INSTRUCTIONS.md). Run preflight once, the four workers pulling ready fits from the shared Supabase queue in separate sessions, then results once. The revised matrix contains 78 fits.
 
 Knowledge distillation study · design version 1.0 · 22 November 2026
 

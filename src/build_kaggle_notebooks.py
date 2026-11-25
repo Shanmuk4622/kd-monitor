@@ -15,6 +15,13 @@ OUT = ROOT / "notebooks"
 # Only this reviewed bundle may import the preceding release's CIFAR capacity probes.
 # A future runtime change falls back to qualifying the inputs itself.
 CIFAR_COMPATIBILITY = {
+<<<<<<< HEAD
+=======
+    "bee748dd46cbc748da264bbba2dafea2fbad73cd18401dbb57b3ae290f746376":
+        "4f73c5a747c3ca210a388ed5375a3b96be176d0245d2539fe45357d957d9c7e9",
+    "996460a7acd95ca1ef21d37fc8453951ba34de25e76393c062c4562b0f5a8185":
+        "4f73c5a747c3ca210a388ed5375a3b96be176d0245d2539fe45357d957d9c7e9",
+>>>>>>> 7c4a96c (updated again)
     "67df1731479c785aa54c9535e210d644d1a6efe9df51eb455684e7418dbc4e2d":
         "4f73c5a747c3ca210a388ed5375a3b96be176d0245d2539fe45357d957d9c7e9",
     "44b34996bf45cc167a213a61467b66d268a2c0062c61c259cd94f11fc573c2f9":
@@ -23,6 +30,11 @@ CIFAR_COMPATIBILITY = {
 # Only this reviewed operational update can reuse the running campaign's receipts.
 # Other source edits produce a new scientific identity.
 CAMPAIGN_COMPATIBILITY = {
+<<<<<<< HEAD
+=======
+    "30b6d7ed15cc8f927585b47f01e51ac498d08c0ac5c5eb6758f39c50df626bff": "5d9dcc3aed11cf9625ea8793bb2407e75cef1baab34dbebe028b37057bd0a226",
+    "be1a9d4031709a81757252a5c2b5a5a83476b4f514712346d07f162be073bfbf": "5d9dcc3aed11cf9625ea8793bb2407e75cef1baab34dbebe028b37057bd0a226",
+>>>>>>> 7c4a96c (updated again)
     "f0e8cc9821d482e06bd93555ef3ba1a18770b8ce2fdd0b33f94d16ff9bc6f3a4": "5d9dcc3aed11cf9625ea8793bb2407e75cef1baab34dbebe028b37057bd0a226",
 }
 STAGES = [
@@ -36,7 +48,7 @@ STAGES = [
         "02_Kaggle_Train",
         "Train or resume the experiment",
         "train(hub,base,output,INPUT_PATHS,VERSIONS,GROUP,NUM_WORKERS,WORKER_ID)",
-        "After preflight, launch each of the four training notebooks in its own Kaggle session. Every file has its worker ID set. Relaunch the same worker after interruption.",
+        "After preflight, launch each of the four training notebooks in its own Kaggle session. Each notebook claims one ready fit at a time from the shared Supabase queue. Install monitoring/queue.sql after the current monitoring/schema.sql. Existing HF audits and checkpoints are reused.",
     ),
     (
         "03_Kaggle_Results",
@@ -56,6 +68,10 @@ def main():
             for n in (
                 "kaggle_inputs.py",
                 "kaggle_plan.py",
+<<<<<<< HEAD
+=======
+                "kaggle_dispatch.py",
+>>>>>>> 7c4a96c (updated again)
                 "kaggle_run.py",
                 "kaggle_results.py",
                 "cache_preflight.py",
@@ -118,8 +134,13 @@ if missing:
                 filename += f"_Worker{worker}"
             title += f" · Worker {worker}"
             config += (f"\nWORKER_ID = {worker}\nMONITOR_ENABLED = True\n"
+<<<<<<< HEAD
                        "MAX_RUNS = 0  # 0 selects all pending assigned runs\n"
                        "MODEL_FILTER = []  # e.g. ['resnet18']; includes required teachers owned here\n"
+=======
+                       "MAX_RUNS = 0  # 0 keeps pulling ready runs from the shared queue\n"
+                       "MODEL_FILTER = []  # e.g. ['resnet18']; includes required teachers\n"
+>>>>>>> 7c4a96c (updated again)
                        "SESSION_HOURS = 0  # optional soft time limit from planning, in hours")
             call = call[:-1] + ",models=MODEL_FILTER,limit=MAX_RUNS,hours=SESSION_HOURS)"
         resolve = input_resolver + '''

@@ -216,6 +216,12 @@ class Driver:
 
         def hook(current, force):
             nonlocal window
+<<<<<<< HEAD
+=======
+            queue = getattr(self.hub, "queue", None)
+            if queue and queue.lost:
+                raise queue.lost
+>>>>>>> 7c4a96c (updated again)
             if time.monotonic() >= getattr(self, "deadline", float("inf")):
                 self.stopping = True
             if force or self.stopping or time.monotonic() - last >= 1800:

@@ -27,9 +27,15 @@
         <h3>Performance history</h3>
         <p id="history-note"></p><div id="charts"></div>
         <div class="panel-head"><h3>Run inventory</h3><label>Show
+<<<<<<< HEAD
           <select id="filter"><option value="">All runs</option><option>Audited</option><option>Active</option><option>Pending</option><option>Resumable</option><option>Unconfirmed</option></select></label></div>
         <p id="plan-note"></p>
         <div class="events"><table><thead><tr><th>Dataset</th><th>Model</th><th>Method</th><th>Seed</th><th>Epochs</th><th>Status</th><th>Observed time</th></tr></thead><tbody id="inventory"></tbody></table></div>
+=======
+          <select id="filter"><option value="">All runs</option><option>Audited</option><option>Active</option><option>Pending</option><option>Resumable</option><option>Unconfirmed</option><option>Ready</option><option>Ready to resume</option><option>Waiting for teacher</option><option>Waiting for bank</option><option>Claimed</option><option>Original notebook</option></select></label></div>
+        <p id="plan-note"></p>
+        <div class="events"><table><thead><tr><th>Dataset</th><th>Model</th><th>Method</th><th>Seed</th><th>Epochs</th><th>Status</th><th>Worker or dependency</th><th>Observed time</th></tr></thead><tbody id="inventory"></tbody></table></div>
+>>>>>>> 7c4a96c (updated again)
       </section>
       <h2>Recent events</h2>
       <div class="events"><table><thead><tr><th>Time</th><th>Worker</th><th>Run</th><th>Event</th></tr></thead><tbody id="events"></tbody></table></div>

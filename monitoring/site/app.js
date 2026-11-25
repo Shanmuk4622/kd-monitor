@@ -8,7 +8,11 @@ function node(tag, value, cls) {
 }
 const fmt = (v, digits = 0, unit = "") => Number.isFinite(v) ? v.toFixed(digits) + unit : "—";
 const localTime = t => new Date(t).toLocaleString();
+<<<<<<< HEAD
 let workers = [], events = [];
+=======
+let workers = [], events = [], jobs = [];
+>>>>>>> 7c4a96c (updated again)
 let trends = [], activity = [], memory = [], historyReady = false, nextHistory = 0;
 const plans = window.KD_PLAN || [];
 function duration(seconds) {
@@ -24,6 +28,26 @@ function runState(plan, w) {
   if (d?.resumable?.includes(plan.id)) return "Resumable";
   return Array.isArray(d?.audited) ? "Pending" : "Unconfirmed";
 }
+<<<<<<< HEAD
+=======
+function queueState(j) {
+  if (j.state === "audited") return "Audited";
+  if (j.state === "legacy") return "Original notebook";
+  const active = x => x.state === "claimed" && Date.parse(x.expires) > Date.now();
+  if (active(j)) return "Claimed";
+  if (j.teacher && !jobs.some(t => t.run_id === j.teacher && t.state === "audited")) return "Waiting for teacher";
+  if (j.bank && !j.bank_ready && jobs.some(b => b.bank === j.bank && active(b))) return "Waiting for bank";
+  return j.resumable ? "Ready to resume" : "Ready";
+}
+function queueOwner(j) {
+  const state=queueState(j);
+  if (state==="Original notebook") return "Worker "+j.original_worker+" (original)";
+  if (state==="Claimed" || state==="Audited") return "Worker "+j.worker;
+  if (state==="Waiting for teacher") return j.teacher;
+  if (state==="Waiting for bank") return j.bank;
+  return "Next free worker";
+}
+>>>>>>> 7c4a96c (updated again)
 function chart(title, key, points, percent) {
   const figure=node("figure");
   figure.append(node("figcaption",title));
@@ -57,23 +81,43 @@ function chart(title, key, points, percent) {
 }
 function renderDetail() {
   const id=Number(el("focus").value), w=workers.find(x=>x.worker_id===id);
+<<<<<<< HEAD
   const items=plans.filter(p=>p.worker===id), filter=el("filter").value;
   const details=w?.sample?.details;
   el("plan-note").textContent=Array.isArray(details?.selected)
+=======
+  const items=jobs.length ? plans : plans.filter(p=>p.worker===id), filter=el("filter").value;
+  const details=w?.sample?.details;
+  el("plan-note").textContent=jobs.length ? "Shared inventory for all four workers. Original notebook means its runs are awaiting migration." : Array.isArray(details?.selected)
+>>>>>>> 7c4a96c (updated again)
     ? details.selected.length+" selected this session. Audited fits have passed the Hugging Face evidence check."
     : "Assignment is known. Completion is unconfirmed until this worker sends an audit inventory.";
   const rows=[];
   for (const p of items) {
+<<<<<<< HEAD
     const state=runState(p,w);
     if (filter && state!==filter) continue;
     const a=activity.find(x=>x.worker_id===id && x.run_id===p.id);
     const tr=node("tr");
     for (const value of [p.dataset,p.model,p.arm,p.seed,p.epochs,state,duration(a?.observed_seconds)])
+=======
+    const job=jobs.find(j=>j.run_id===p.id);
+    const state=job ? queueState(job) : runState(p,w);
+    if (filter && state!==filter) continue;
+    const observations=activity.filter(x=>x.run_id===p.id);
+    const seconds=observations.length ? observations.reduce((v,x)=>v+x.observed_seconds,0) : null;
+    const tr=node("tr");
+    for (const value of [p.dataset,p.model,p.arm,p.seed,p.epochs,state,job ? queueOwner(job) : "Worker "+p.worker,duration(seconds)])
+>>>>>>> 7c4a96c (updated again)
       tr.append(node("td",value));
     rows.push(tr);
   }
   if (!rows.length) {
+<<<<<<< HEAD
     const tr=node("tr"),td=node("td","No matching runs.");td.colSpan=7;tr.append(td);rows.push(tr);
+=======
+    const tr=node("tr"),td=node("td","No matching runs.");td.colSpan=8;tr.append(td);rows.push(tr);
+>>>>>>> 7c4a96c (updated again)
   }
   el("inventory").replaceChildren(...rows);
   const points=(historyReady?trends:memory).filter(p=>p.worker_id===id);
@@ -89,16 +133,31 @@ function render() {
     const age = w ? Math.max(0, Math.floor((Date.now() - Date.parse(w.received_at)) / 1000)) : null;
     const state = !w ? "No report" : s.status === "running" && age > 90 ? "stale" : s.status;
     const box = node("article", null, "card"), head = node("div", null, "card-top");
-    head.append(node("h3", "Worker " + id), node("span", state, "state " + state));
+    const label = state==="running" && jobs.length
+      ? (s.run_id?.startsWith("waiting for a ready fit") ? "waiting" :
+         Number.isFinite(s.epoch) ? "training" : "preparing") : state;
+    head.append(node("h3", "Worker " + id), node("span", label, "state " + state));
     box.append(head, node("p", s.run_id || "Awaiting worker", "run"));
     const owned=plans.filter(p=>p.worker===id), d=s.details || {};
+<<<<<<< HEAD
     const plan=owned.find(p=>p.id===s.run_id);
+=======
+    const plan=plans.find(p=>p.id===s.run_id);
+>>>>>>> 7c4a96c (updated again)
     const progress=Number.isFinite(d.update) ? d.update : Number(/Local checkpoint at update (\d+)/.exec(s.comment||"")?.[1]);
     const activeEnd=state==="running" ? Date.now() : Date.parse(s.sampled_at);
     const elapsed=(activeEnd-Date.parse(s.started_at))/1000;
     const observed=activity.find(a=>a.worker_id===id && a.run_id===s.run_id);
     const done=owned.filter(p=>runState(p,w)==="Audited").length;
+<<<<<<< HEAD
     box.append(node("p",owned.length+" assigned · "+(Array.isArray(d.audited)
+=======
+    if (jobs.length) {
+      const current=jobs.find(j=>j.worker===id && queueState(j)==="Claimed");
+      const audited=jobs.filter(j=>j.worker===id && j.state==="audited").length;
+      box.append(node("p",audited+" audited"+(current ? " · Claimed "+current.run_id : "")));
+    } else box.append(node("p",owned.length+" assigned · "+(Array.isArray(d.audited)
+>>>>>>> 7c4a96c (updated again)
       ? done+" audited · "+(owned.length-done)+" unfinished" : "awaiting audit inventory")));
     if (plan && Number.isFinite(progress)) {
       const bar=node("progress");bar.max=plan.updates;bar.value=progress;bar.setAttribute("aria-label","Fit updates");
@@ -124,6 +183,14 @@ function render() {
   }
   el("workers").replaceChildren(...cards);
   el("summary").textContent=plans.length+" scheduled fits across four notebooks";
+<<<<<<< HEAD
+=======
+  if (jobs.length) {
+    const counts=new Map();
+    for (const j of jobs) {const k=queueState(j);counts.set(k,(counts.get(k)||0)+1);}
+    el("summary").textContent=jobs.length+" fits · "+Array.from(counts,([k,n])=>n+" "+k.toLowerCase()).join(" · ");
+  }
+>>>>>>> 7c4a96c (updated again)
   renderDetail();
   const rows = events.map(e => {
     const tr = node("tr");
@@ -140,11 +207,16 @@ async function refresh() {
   if (!viewer) return;
   const ticket=++request, v=version;
   try {
-    const [w,e] = await Promise.all([client.from("kd_workers").select("*"),
-      client.from("kd_events").select("*").order("id",{ascending:false}).limit(40)]);
+    const [w,e,q] = await Promise.all([client.from("kd_workers").select("*"),
+      client.from("kd_events").select("*").order("id",{ascending:false}).limit(40),
+      client.from("kd_jobs").select("run_id,original_worker,teacher,bank,state,resumable,bank_ready,worker,expires")]);
     if (v!==version || ticket!==request) return;
     if (w.error || e.error) throw w.error || e.error;
+<<<<<<< HEAD
     workers=w.data; events=e.data;
+=======
+    workers=w.data; events=e.data; if (!q.error) jobs=q.data;
+>>>>>>> 7c4a96c (updated again)
     for (const row of workers) {
       const s=row.sample;
       if (!memory.some(p=>p.worker_id===row.worker_id && p.sampled_at===s.sampled_at))
@@ -180,7 +252,11 @@ function showSession(session) {
   if (viewer===id) return;
   version++; viewer=id; clearTimeout(timer); clearInterval(fallback);
   if (channel) {client.removeChannel(channel); channel=null;}
+<<<<<<< HEAD
   workers=[]; events=[]; trends=[]; activity=[]; memory=[]; historyReady=false;nextHistory=0;render();
+=======
+  workers=[]; events=[]; jobs=[]; trends=[]; activity=[]; memory=[]; historyReady=false;nextHistory=0;render();
+>>>>>>> 7c4a96c (updated again)
   if (!id) return;
   const v=version;
   el("connection").textContent="Connecting"; refresh();

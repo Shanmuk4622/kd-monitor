@@ -10,6 +10,8 @@ Open [Supabase Dashboard](https://supabase.com/dashboard), select your project (
 
 In the same Supabase project, click **SQL Editor → New query**. Open [schema.sql](schema.sql) in the project, copy the entire file into the query window, and click **Run**. A success message with no result rows is expected. Run the SQL as the project owner through this dashboard. The script enables row-level security and adds both public tables to the `supabase_realtime` publication. If the Data API is disabled in your project, enable it for the `public` schema. Keep `kd_private` outside the exposed schemas. [Realtime publication settings](https://supabase.com/docs/guides/realtime/postgres-changes)
 
+Run [queue.sql](queue.sql) in a second query to install the shared dispatcher. The 78 rows preserve original assignments until each updated notebook checks its HF receipts. Existing installations should rerun the current schema first. The viewer sees run and dependency states. An authenticated worker claims one fit and renews it with training telemetry. See the [rolling handoff instructions](../notebooks/KAGGLE_RUN_INSTRUCTIONS.md).
+
 | Database object | Contents and access |
 | --- | --- |
 | `public.kd_workers` | Primary key `worker_id` (0–3), server `received_at`, and latest JSON `sample`. Authenticated viewers can read. |
